@@ -57,6 +57,28 @@ npm run dev
 ```
 UI will run at `http://127.0.0.1:5173`.
 
+
+## 3b) Desktop App Launcher (Windows)
+If you want a desktop-style launcher that starts backend + frontend for you:
+
+```powershell
+cd <repo-root>
+run_desktop.bat
+```
+
+What it does:
+- Ensures `backend/.venv` exists
+- Installs backend + launcher dependencies
+- Starts FastAPI (`uvicorn`) and Vite (`npm run dev`)
+- Opens the UI in a desktop window (pywebview) when available, otherwise browser fallback
+
+You can also run launcher directly:
+```powershell
+cd <repo-root>
+backend\.venv\Scripts\activate
+python desktop\launcher.py
+```
+
 ## 4) Usage Highlights
 - Import CSV: `POST /orders/import_csv` (uses `Assignment #` upsert semantics and row-level error report).
 - Saved view controls table + map scope (`GET /orders?view_id=...`).

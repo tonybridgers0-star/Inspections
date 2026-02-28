@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+backend/.pytest_cache/
+backend/inspection.db
+node_modules/
+dist/

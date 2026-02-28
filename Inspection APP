@@ -1,0 +1,165 @@
+You are an expert senior full-stack engineer. Build a local Windows app called “Inspection Order Manager” that behaves like Airtable: table-first, saved views, and map-first routing. It must run entirely on my PC (no cloud dependency) using FastAPI + SQLite backend and React + Leaflet frontend.
+
+PRIMARY CSV FORMAT (MUST SUPPORT EXACT HEADERS)
+My CSV import will often have these TAB/CSV headers (exact spellings):
+Date Assigned
+Assignment #
+Due Date
+Insured Name
+DBA Name
+Contact
+Business Desc
+Address
+City
+State
+Zip Code
+Status
+Priority
+Appointment
+Program Name
+Consultant Name
+Special Instructions
+
+IMPORT RULES (CRITICAL)
+1) Treat “Assignment #” as the unique order_number (string). On import:
+   - If Assignment # exists already, update the existing record (upsert) and log activity (“import update”).
+   - If not, create new record and log activity (“import create”).
+
+2) Map CSV fields to database:
+- orders.order_number = Assignment #
+- orders.client = Program Name (and ALSO store Program Name separately as a custom field cf:program_name if needed)
+- orders.insured_name = Insured Name
+- orders.phone = if present in Contact field OR parse from Special Instructions (see below)
+- orders.address1 = Address
+- orders.city = City
+- orders.state = State
+- orders.zip = Zip Code
+- orders.status = normalize:
+     “Work In Progress” -> Active
+     “Completed” -> Completed
+     “On Hold” -> OnHold
+     otherwise default Active
+- orders.due_date = Due Date
+- orders.notes = Special Instructions (full text preserved exactly)
+
+Additionally store these CSV columns as CUSTOM FIELDS (not core columns):
+- Date Assigned -> cf:date_assigned (date)
+- DBA Name -> cf:dba_name (string)
+- Contact -> cf:contact_name (string)
+- Business Desc -> cf:business_desc (string)
+- Priority -> cf:priority (string)
+- Appointment -> cf:appointment (date if parseable, else string)
+- Consultant Name -> cf:consultant_name (string)
+- Program Name -> cf:program_name (string)
+
+3) Custom fields support:
+- Custom fields are arbitrary key/value with types string/number/boolean/date.
+- Use the database model with custom_fields_definitions + order_custom_fields.
+
+SPECIAL INSTRUCTIONS PARSING (HIGH VALUE)
+Special Instructions contains structured facts. Implement a parser that:
+A) Extracts contact info if present in patterns like:
+   “Contact Information: Name, 2704016136, email@example.com”
+   - If phone found, set orders.phone (normalize digits) and also cf:contact_phone
+   - If email found, store cf:contact_email
+B) Extracts key facts written as “Label - Value” or “Label: Value”, including comma-separated items:
+   Examples from my data:
+   - “Protection class - 9”
+   - “Year built - 1982”
+   - “Total Area - 3500”
+   - “Sales - 200,000”
+   - “Construction type - Joisted Masonry”
+   - “Building Improvements - Wiring - 2010 , Roofing - 2025 , Plumbing - 2010 , Heating - 2010”
+C) For each extracted item:
+   - Create (or reuse) a custom field definition using a normalized key:
+       “Protection class” -> protection_class
+       “Year built” -> year_built
+       “Total Area” -> total_area
+       “Construction type” -> construction_type
+       “Sales” -> sales
+   - Infer type conservatively:
+       numbers with commas -> number
+       4-digit year -> number (or date year stored as number)
+       otherwise string
+D) For the “Building Improvements …” clause:
+   - Store as separate custom fields:
+       improvements_wiring = 2010
+       improvements_roofing = 2025
+       improvements_plumbing = 2010
+       improvements_heating = 2010
+
+IMPORTANT: Never lose the original text — keep orders.notes = full Special Instructions.
+
+APP REQUIREMENTS (Airtable-like)
+- Table-first interface with:
+  - Inline edit for core fields + custom fields
+  - Column visibility picker (include custom fields as selectable columns)
+  - Sort + filter builder that supports:
+      - core fields
+      - custom fields (by key)
+      - “Needs geocode” filter (lat/lon missing)
+  - Saved views: store filters + visible columns + sort
+- Map view shows ONLY the rows returned by the currently selected view.
+- One-click “Complete” in table row or map popup:
+  - sets status=Completed, completed_at=now
+  - removes it from map and Active-type views instantly
+- Activity log:
+  - record create/update/status_change/import actions with before/after JSON
+- Geocoding:
+  - Use Nominatim with caching in SQLite table geocode_cache keyed by normalized full address.
+  - “Geocode now” per row and “Bulk geocode current view” button.
+- Routing:
+  - Start location set by address in Settings (geocode & store)
+  - Optimize route for the currently visible orders with lat/lon using OSRM (configurable base URL)
+  - Draw route polyline and show ordered stop list with totals
+  - “Open in Google Maps” link with waypoints best-effort
+
+TECH STACK (MANDATORY)
+Backend:
+- Python 3.11+, FastAPI, SQLAlchemy 2.x, Alembic, SQLite
+Frontend:
+- React + TypeScript (Vite)
+- TanStack Table for the grid
+- React Query for API calls
+- Leaflet for map
+- UI components using MUI or shadcn/ui
+
+DATABASE MODEL (IMPLEMENT)
+Use tables:
+orders, custom_fields_definitions, order_custom_fields, saved_views, activity_log, geocode_cache
+(Implement as previously described with uuid PKs and timestamps.)
+
+API ENDPOINTS (MINIMUM)
+- POST /orders/import_csv  (accept upload; parse; upsert; return import report)
+- GET /orders?view_id=...  (apply view filters server-side, including custom field filters)
+- POST /orders
+- PATCH /orders/{id}
+- POST /orders/{id}/complete
+- DELETE /orders/{id}
+- GET /orders/export_csv?view_id=...
+
+- GET/POST/PATCH/DELETE /views
+- GET/POST/PATCH/DELETE /custom_fields
+- GET /activity?entity_type=&entity_id=&limit=
+- POST /geocode/order/{id}
+- POST /geocode/bulk?view_id=...
+- POST /route/optimize?view_id=...
+
+DELIVERABLES (STRICT)
+1) Short architecture overview
+2) Exact folder/file tree
+3) COMPLETE code for EVERY file (no omissions) in code blocks labeled with file paths
+4) Windows setup guide:
+   - python venv, pip install
+   - run alembic migrations
+   - start backend
+   - node install + start frontend
+5) Include a sample CSV using my headers and 3 sample rows (similar to:
+   RAJ Holdings LLC, Dore’s Corner Tavern LLC, Annulox Technologies LLC)
+6) Include pytest tests for import upsert, view filter apply, complete order, export csv
+
+QUALITY BAR
+- Must run on first try.
+- Handle import errors gracefully with row-level error report.
+- Map always matches current view.
+- Completing removes from map immediately.
